@@ -22,7 +22,7 @@ static int keyw = 18;
 static int keyh = 72;
 
 /* one extra element for alt. last note */
-static const char keylabels[46] = KEYLABELS;
+static char keylabels[46];
 static const uchar keycodes[46] = KEYCODES;
 
 static uchar keystate[6];
@@ -150,9 +150,7 @@ static int draw_key(int i, int pressed, GC gc)
 	int eb_h = keyh * 4/7;
 	int labelx;
 	unsigned long color;
-	char c = 0;
-	if (!keylabels[i-7])
-		return 0;
+
 	if (j >= 5)
 		j++;
 	x = ((i/12) * 7 - 4 + j/2) * keyw;
@@ -163,6 +161,8 @@ static int draw_key(int i, int pressed, GC gc)
 		color = BLACK;
 	} else {
 		x += keyw * 6/10;
+		if (x > keyw * 25)
+			return 0;
 		draw_ebony(j, pressed, x, eb_h, gc);
 		labelx = x + keyw/3 - 2;
 		y = eb_h - 6;
@@ -172,24 +172,26 @@ static int draw_key(int i, int pressed, GC gc)
 		color = WHITE;
 	XSetForeground(dpy, gc, color);
 	i -= 7;
-	switch (keylabels[i]) {
-	case '*': c = '\''; break;
-	case '^': c = '¨' ; break;
-	case '`': c = '´' ;
-	}
-	if (c) {
-		XDrawString(dpy, keybd_pixmap, gc, labelx, y+7, &c, 1);
-		if (c =='\'')
-			y -= 3;
-	}
 	XDrawString(dpy, keybd_pixmap, gc, labelx, y, keylabels+i, 1);
 	return x;
+}
+
+/* checks if c is a printable character in ISO 8859-1 */
+static int isprint_latin1(unsigned char c) {
+	return c > 0x1f && c < 0x7f || c > 0xa0;
 }
 
 static void draw_keyboard(int w, Window win, GC gc)
 {
 	int i = 0;
 	while (i < 44) {
+		KeySym keysym = XkbKeycodeToKeysym(dpy, keycodes[i], 0, 0);
+
+		/* convert keysym to string with Caps Lock on */
+		if (!XkbTranslateKeySym(dpy, &keysym, LockMask, keylabels + i, 1, NULL) ||
+		    !isprint_latin1(keylabels[i]))
+			keylabels[i] = ' ';
+
 		draw_key(i+7, keystate[i/8] & 1<<(i%8), gc);
 		i++;
 	}
@@ -605,6 +607,8 @@ int main(int argc, char **argv)
 	if (!dpy || !open_seq())
 		return 1;
 	set_detectable_autorepeat();
+	/* make sure latin1 is used when converting keysym to string */
+	XkbSetXlibControls(dpy, XkbLC_ForceLatin1Lookup, XkbLC_ForceLatin1Lookup);
 	win = createwin();
 	create_keybd_pixmap();
 	while (process_event(win))

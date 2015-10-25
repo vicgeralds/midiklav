@@ -1,14 +1,3 @@
-#define KEYLABELS {			\
-	'<','A','Z','S','X',		\
-	'C','F','V','G','B',		\
-	'N','J','M','K',',','L','.',	\
-	'-','Ä',' ','*', 0,		\
-	' ','1','Q','2','W','3','E',	\
-	'R','5','T','6','Y',		\
-	'U','8','I','9','O','0','P',	\
-	'Å','`','^',			\
-}
-
 /* These should work with standard keyboards. */
 
 #define KEYCODES {			\
