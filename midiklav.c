@@ -12,6 +12,28 @@
 #define BLACK BlackPixel(dpy, DefaultScreen(dpy))
 #define WHITE WhitePixel(dpy, DefaultScreen(dpy))
 
+/* allocated colors */
+enum {
+	GREY,
+	BLUE,
+	RED,
+	PANEL1,
+	PANEL2,
+	PANEL3,
+	PANEL4,
+	NUM_PIXELS
+};
+
+static unsigned long pixels[NUM_PIXELS] = {
+	0x555555,	/* GREY */
+	0x0000ff,	/* BLUE */
+	0xff0000,	/* RED */
+	0x433900,	/* PANEL1 */
+	0xb8c76f,	/* PANEL2 */
+	0x9a6759,	/* PANEL3 */
+	0x9ad284	/* PANEL4 */
+};
+
 typedef unsigned char uchar;
 
 static Display *dpy;
@@ -44,14 +66,18 @@ static void set_detectable_autorepeat()
 	XkbSetDetectableAutoRepeat(dpy, True, &supported);
 }
 
-static unsigned long rgbcolor(uchar r, uchar g, uchar b)
-{
-	XColor c;
-	c.red   = 65535 * r / 255;
-	c.green = 65535 * g / 255;
-	c.blue  = 65535 * b / 255;
-	XAllocColor(dpy, DefaultColormap(dpy, DefaultScreen(dpy)), &c);
-	return c.pixel;
+static Colormap init_colors() {
+	Colormap colormap = DefaultColormap(dpy, DefaultScreen(dpy));
+	int i;
+	for (i = 0; i < NUM_PIXELS; i++) {
+		XColor c;
+		c.red   = 257 * ((pixels[i] >> 16) & 0xff);
+		c.green = 257 * ((pixels[i] >> 8) & 0xff);
+		c.blue  = 257 * ((pixels[i]) & 0xff);
+		XAllocColor(dpy, colormap, &c);
+		pixels[i] = c.pixel;
+	}
+	return colormap;
 }
 
 static void set_wm_stuff(Window win)
@@ -82,7 +108,7 @@ static void set_wm_stuff(Window win)
 
 static Window createwin()
 {
-	unsigned long grey = rgbcolor(85,85,85);
+	unsigned long grey = pixels[GREY];
 	Window win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0,
 					 468, 73+PANEL_HEIGHT, 0, grey, grey);
 	set_wm_stuff(win);
@@ -105,7 +131,7 @@ static Pixmap createpixmap(unsigned w, unsigned h, unsigned long bg)
 
 static void create_keybd_pixmap()
 {
-	keybd_pixmap = createpixmap(keyw*26, keyh+1, rgbcolor(85,85,85));
+	keybd_pixmap = createpixmap(keyw*26, keyh+1, pixels[GREY]);
 }
 
 static void draw_ivory(int i, int pressed, int x, int h, GC gc)
@@ -126,7 +152,7 @@ static void draw_ivory(int i, int pressed, int x, int h, GC gc)
 	}
 	XSetForeground(dpy, gc, BLACK);
 	XDrawLine(dpy, keybd_pixmap, gc, x2, y, x2, keyh-1);
-	XSetForeground(dpy, gc, !pressed ? WHITE : rgbcolor(0,0,255));
+	XSetForeground(dpy, gc, pressed ? pixels[BLUE] : WHITE);
 	XFillRectangle(dpy, keybd_pixmap, gc, x+d, 0, w, h);
 	XFillRectangle(dpy, keybd_pixmap, gc, x, h, keyw-1, keyh-h);
 }
@@ -134,7 +160,7 @@ static void draw_ivory(int i, int pressed, int x, int h, GC gc)
 static void draw_ebony(int i, int pressed, int x, int h, GC gc)
 {
 	int w = keyw * 2/3;
-	XSetForeground(dpy, gc, !pressed ? BLACK : rgbcolor(0,0,255));
+	XSetForeground(dpy, gc, pressed ? pixels[BLUE] : BLACK);
 	XFillRectangle(dpy, keybd_pixmap, gc, x+1, 0, w-1, h);
 	XSetForeground(dpy, gc, WHITE);
 	XDrawLine(dpy, keybd_pixmap, gc, x-1, 0, x-1, h);
@@ -166,7 +192,7 @@ static int draw_key(int i, int pressed, GC gc)
 		draw_ebony(j, pressed, x, eb_h, gc);
 		labelx = x + keyw/3 - 2;
 		y = eb_h - 6;
-		color = rgbcolor(255,0,0);
+		color = pixels[RED];
 	}
 	if (pressed)
 		color = WHITE;
@@ -205,7 +231,7 @@ static void draw_panel_keys(int x1, int x2, int w, Window win, GC gc)
 	unsigned long bg;
 	char s[2] = "F";
 	int x, i;
-	bg = rgbcolor(154,103,89);
+	bg = pixels[PANEL3];
 	for (i=0; i<8; i++) {
 		x = 4;
 		if (i >= 4)
@@ -247,7 +273,7 @@ static void display_base_octave(const struct notectl *note,
 		x += keyw * 13;
 	XSetForeground(dpy, gc, BLACK);
 	XFillRectangle(dpy, win, gc, x, 16, 17, 12);
-	XSetForeground(dpy, gc, rgbcolor(154,210,132));
+	XSetForeground(dpy, gc, pixels[PANEL4]);
 	XDrawString(dpy, win, gc, x+3, 25, s, 2);
 }
 
@@ -265,7 +291,7 @@ static void display_velocity(const struct notectl *note,
 		x += keyw * 13;
 	XSetForeground(dpy, gc, BLACK);
 	XFillRectangle(dpy, win, gc, x, 16, 23, 12);
-	XSetForeground(dpy, gc, rgbcolor(154,210,132));
+	XSetForeground(dpy, gc, pixels[PANEL4]);
 	XDrawString(dpy, win, gc, x+3, 25, s, 3);
 }
 
@@ -283,7 +309,7 @@ static void display_channel(const struct notectl *note,
 		x += keyw * 13;
 	XSetForeground(dpy, gc, BLACK);
 	XFillRectangle(dpy, win, gc, x, 16, 17, 12);
-	XSetForeground(dpy, gc, rgbcolor(154,210,132));
+	XSetForeground(dpy, gc, pixels[PANEL4]);
 	XDrawString(dpy, win, gc, x+3, 25, s, 2);
 }
 
@@ -296,7 +322,7 @@ static void draw_panel(int w, Window win, GC gc)
 	int n2 = 8;
 	int n3 = 7;
 
-	XSetForeground(dpy, gc, rgbcolor(184,199,111));
+	XSetForeground(dpy, gc, pixels[PANEL2]);
 	XDrawLine(dpy, win, gc, 2, PANEL_HEIGHT-1, w-2, PANEL_HEIGHT-1);
 
 	if (keyw < 17)
@@ -355,7 +381,7 @@ static void redraw_rect(const XExposeEvent *e, GC gc)
 	unsigned w = e->width;
 	unsigned h = e->height;
 	if (y < PANEL_HEIGHT) {
-		XSetForeground(dpy, gc, rgbcolor(67,57,0));
+		XSetForeground(dpy, gc, pixels[PANEL1]);
 		XFillRectangle(dpy, e->window, gc, x, y, w, PANEL_HEIGHT-y);
 		draw_panel(keyw*26, e->window, gc);
 	}
@@ -555,13 +581,10 @@ static int wm_close(const XClientMessageEvent *e)
 	return e->data.l[0] == wm_delete_window;
 }
 
-static int process_event(Window win)
+static int process_event(Window win, GC gc)
 {
 	XEvent e;
-	GC gc = XCreateGC(dpy, win, 0, NULL);
-	XFontStruct *font = XLoadQueryFont(dpy, "*-fixed-*-10-*-iso8859-1");
 	int width;
-	XSetFont(dpy, gc, font->fid);
 	XNextEvent(dpy, &e);
 	switch (e.type) {
 	case ConfigureNotify:
@@ -569,7 +592,7 @@ static int process_event(Window win)
 			break;
 	case MapNotify:
 		width = keyw * 26;
-		XSetForeground(dpy, gc, rgbcolor(67,57,0));
+		XSetForeground(dpy, gc, pixels[PANEL1]);
 		XFillRectangle(dpy, win, gc, 0, 0, width, PANEL_HEIGHT);
 		draw_panel(width, win, gc);
 		draw_keyboard(width, win, gc);
@@ -596,24 +619,36 @@ static int process_event(Window win)
 			return 0;
 
 	}
-	XFreeGC(dpy, gc);
 	return 1;
 }
 
 int main(int argc, char **argv)
 {
 	Window win;
+	GC gc;
+	XFontStruct *font;
+	Colormap colormap;
+
 	dpy = XOpenDisplay(NULL);
 	if (!dpy || !open_seq())
 		return 1;
 	set_detectable_autorepeat();
 	/* make sure latin1 is used when converting keysym to string */
 	XkbSetXlibControls(dpy, XkbLC_ForceLatin1Lookup, XkbLC_ForceLatin1Lookup);
+
+	colormap = init_colors();
 	win = createwin();
 	create_keybd_pixmap();
-	while (process_event(win))
+	gc = XCreateGC(dpy, win, 0, NULL);
+	font = XLoadQueryFont(dpy, "*-fixed-*-10-*-iso8859-1");
+	XSetFont(dpy, gc, font->fid);
+
+	while (process_event(win, gc))
 		;
+	XFreeGC(dpy, gc);
+	XFreeFont(dpy, font);
 	XFreePixmap(dpy, keybd_pixmap);
+	XFreeColors(dpy, colormap, pixels, NUM_PIXELS, 0);
 	XDestroyWindow(dpy, win);
 	XCloseDisplay(dpy);
 	return 0;
