@@ -3,8 +3,8 @@
 #include "seq.h"
 
 static snd_seq_t *handle;
-static int port_lower;
-static int port_upper;
+int port_lower = -1;
+int port_upper = -1;
 
 int open_seq()
 {
@@ -26,13 +26,13 @@ int open_seq()
 	return 1;
 }
 
-int send_note(enum port p, int on, char ch, char note, char vel)
+int send_note(int port, int on, int ch, int note, int vel)
 {
 	snd_seq_event_t ev;
 	snd_seq_ev_clear(&ev);
 	ev.dest.client = SND_SEQ_ADDRESS_SUBSCRIBERS;
 	ev.source.client = snd_seq_client_id(handle);
-	ev.source.port = p==PORT_LOWER ? port_lower : port_upper;
+	ev.source.port = port;
 	snd_seq_ev_set_direct(&ev);
 
 	ev.type = on ? SND_SEQ_EVENT_NOTEON : SND_SEQ_EVENT_NOTEOFF;

@@ -50,9 +50,9 @@ static const uchar keycodes[46] = KEYCODES;
 static uchar keystate[6];
 
 struct notectl {
-	char channel;
-	char base_note;
-	char velocity;
+	int channel;
+	int base_note;
+	int velocity;
 };
 
 static struct notectl lower = {0, 48, 127};
@@ -409,24 +409,24 @@ static int translate_keycode(unsigned keycode)
 
 static int sendnot(int i, int pressed)
 {
-	enum port p;
+	int port;
 	const struct notectl *note;
 	if (i <= 28) {
-		p = PORT_LOWER;
+		port = port_lower;
 		note = &lower;
 	} else {
 		if (i > 7+45)
 			return 0;
 		if (i == 7+45)
 			i = 7+44;
-		p = PORT_UPPER;
+		port = port_upper;
 		note = &upper;
 		i -= 24;
 	}
 	i += note->base_note;
 	if (i < 0 || i > 127)
 		return 0;
-	send_note(p, pressed, note->channel, i, note->velocity);
+	send_note(port, pressed, note->channel, i, note->velocity);
 	return 1;
 }
 
@@ -473,9 +473,8 @@ static void change_note_control(KeySym keysym, int i, unsigned mod,
 			if (mod & ShiftMask)
 				note->velocity--;
 			else {
-				note->velocity -= 10;
-				if (note->velocity < 0)
-					note->velocity = 0;
+				int vel = note->velocity - 10;
+				note->velocity = vel < 0 ? 0 : vel;
 			}
 			i = 2;
 		}
@@ -486,9 +485,8 @@ static void change_note_control(KeySym keysym, int i, unsigned mod,
 			if (mod & ShiftMask)
 				note->velocity++;
 			else {
-				note->velocity += 10;
-				if (note->velocity < 0)
-					note->velocity = 127;
+				int vel = note->velocity + 10;
+				note->velocity = vel > 127 ? 127 : vel;
 			}
 			i = 2;
 		}
