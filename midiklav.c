@@ -4,8 +4,8 @@
 #include <X11/keysym.h>
 #include <X11/XKBlib.h>		/* XkbSetDetectableAutoRepeat */
 #include <stdio.h>
-#include "keymap_se.h"
 #include "seq.h"
+#include "notes.h"
 
 #define PANEL_HEIGHT 32
 
@@ -43,11 +43,11 @@ static Pixmap keybd_pixmap;
 static int keyw = 18;
 static int keyh = 72;
 
-/* one extra element for alt. last note */
-static char keylabels[46];
-static const uchar keycodes[46] = KEYCODES;
+static char keylabels[NUM_KEYS];
+static uchar keycodes[NUM_KEYS];
 
-static uchar keystate[6];
+/* bit arrays indicating which keys are pressed */
+static unsigned long keystate[2];
 
 struct notectl {
 	int channel;
@@ -134,17 +134,17 @@ static void create_keybd_pixmap()
 	keybd_pixmap = createpixmap(keyw*26, keyh+1, pixels[GREY]);
 }
 
-static void draw_ivory(int i, int pressed, int x, int h, GC gc)
+static void draw_ivory(enum note note, int pressed, int x, int h, GC gc)
 {
 	int y = ++h;
 	int x2 = x + keyw-1;
 	int d, w;
-	if (i==0 || i==6) {
+	if (note == C || note == F) {
 		d = 0;
 		w = (keyw * 6/10) - 1;
 	} else {
 		d = (keyw * 6/10) + (keyw * 2/3) - (keyw-1);
-		if (i==4 || i==12) {
+		if (note == E || note == B) {
 			y = 0;
 			w = keyw-1-d;
 		} else
@@ -157,7 +157,7 @@ static void draw_ivory(int i, int pressed, int x, int h, GC gc)
 	XFillRectangle(dpy, keybd_pixmap, gc, x, h, keyw-1, keyh-h);
 }
 
-static void draw_ebony(int i, int pressed, int x, int h, GC gc)
+static void draw_ebony(int pressed, int x, int h, GC gc)
 {
 	int w = keyw * 2/3;
 	XSetForeground(dpy, gc, pressed ? pixels[BLUE] : BLACK);
@@ -168,37 +168,26 @@ static void draw_ebony(int i, int pressed, int x, int h, GC gc)
 	XDrawLine(dpy, keybd_pixmap, gc, x, h, x+w, h);
 }
 
-/* first key has index 7 (note G, "<" key next to SHIFT) */
 static int draw_key(int i, int pressed, GC gc)
 {
-	int j = i % 12;
-	int x, y;
-	int eb_h = keyh * 4/7;
-	int labelx;
-	unsigned long color;
+	enum note note = i % 14;
+	int x = keyw * (i/2);
+	int y = keyh * 4/7;
 
-	if (j >= 5)
-		j++;
-	x = ((i/12) * 7 - 4 + j/2) * keyw;
-	if (j % 2 == 0) {
-		draw_ivory(j, pressed, x, eb_h, gc);
-		labelx = x + keyw/2 - 3;
-		y = eb_h + 12;
-		color = BLACK;
+	/* not drawing duplicated keys */
+	if (note == B_SHARP || note == E_SHARP)
+		return x;
+
+	if (IS_WHITE_KEY(note)) {
+		draw_ivory(note, pressed, x, y, gc);
+		XSetForeground(dpy, gc, pressed ? WHITE : BLACK);
+		XDrawString(dpy, keybd_pixmap, gc, x + keyw/2 - 3, y + 12, keylabels+i, 1);
 	} else {
 		x += keyw * 6/10;
-		if (x > keyw * 25)
-			return 0;
-		draw_ebony(j, pressed, x, eb_h, gc);
-		labelx = x + keyw/3 - 2;
-		y = eb_h - 6;
-		color = pixels[RED];
+		draw_ebony(pressed, x, y, gc);
+		XSetForeground(dpy, gc, pressed ? WHITE : pixels[RED]);
+		XDrawString(dpy, keybd_pixmap, gc, x + keyw/3 - 2, y - 6, keylabels+i, 1);
 	}
-	if (pressed)
-		color = WHITE;
-	XSetForeground(dpy, gc, color);
-	i -= 7;
-	XDrawString(dpy, keybd_pixmap, gc, labelx, y, keylabels+i, 1);
 	return x;
 }
 
@@ -210,7 +199,7 @@ static int isprint_latin1(unsigned char c) {
 static void draw_keyboard(int w, Window win, GC gc)
 {
 	int i = 0;
-	while (i < 44) {
+	while (i < NUM_KEYS) {
 		KeySym keysym = XkbKeycodeToKeysym(dpy, keycodes[i], 0, 0);
 
 		/* convert keysym to string with Caps Lock on */
@@ -218,7 +207,7 @@ static void draw_keyboard(int w, Window win, GC gc)
 		    !isprint_latin1(keylabels[i]))
 			keylabels[i] = ' ';
 
-		draw_key(i+7, keystate[i/8] & 1<<(i%8), gc);
+		draw_key(i, (keystate[i & 1] >> i/2) & 1, gc);
 		i++;
 	}
 	XSetForeground(dpy, gc, BLACK);
@@ -398,31 +387,87 @@ static void redraw_rect(const XExposeEvent *e, GC gc)
 
 static int translate_keycode(unsigned keycode)
 {
-	int i = 0;
-	while (i < 46) {
-		if (keycode == keycodes[i])
-			return i+7;
-		i++;
-	}
-	return 0;
+	/* map keycodes to notes based on "standard" XFree86 codes */
+	static const signed char notes[] = {
+		NOTE_AE01, NOTE_AE02, NOTE_AE03, NOTE_AE04, NOTE_AE05, NOTE_AE06,
+		NOTE_AE07, NOTE_AE08, NOTE_AE09, NOTE_AE10, NOTE_AE11, NOTE_AE12,
+		NOTE_BKSP, NOTE_TAB,
+		NOTE_AD01, NOTE_AD02, NOTE_AD03, NOTE_AD04, NOTE_AD05, NOTE_AD06,
+		NOTE_AD07, NOTE_AD08, NOTE_AD09, NOTE_AD10, NOTE_AD11, NOTE_AD12,
+		NOTE_RTRN, -1,
+		NOTE_AC01, NOTE_AC02, NOTE_AC03, NOTE_AC04, NOTE_AC05, NOTE_AC06,
+		NOTE_AC07, NOTE_AC08, NOTE_AC09, NOTE_AC10, NOTE_AC11,
+		-1, -1,
+		NOTE_BKSL,
+		NOTE_AB01, NOTE_AB02, NOTE_AB03, NOTE_AB04, NOTE_AB05, NOTE_AB06,
+		NOTE_AB07, NOTE_AB08, NOTE_AB09, NOTE_AB10, NOTE_RTSH
+	};
+
+	if (keycode == 94)
+		return NOTE_LSGT;
+
+	if ((keycode -= 10) < sizeof(notes))
+		return notes[keycode];
+
+	return -1;
 }
 
-static int sendnot(int i, int pressed)
+static void init_keycodes()
+{
+	unsigned kc;
+	for (kc = 10; kc <= 62; kc++) {
+		int i = translate_keycode(kc);
+		if (i >= 0)
+			keycodes[i] = kc;
+	}
+
+	keycodes[NOTE_LSGT] = 94;
+}
+
+static int note_value(enum note note) {
+	switch (note) {
+	case C: return 0;
+	case C_SHARP: return 1;
+	case D: return 2;
+	case D_SHARP: return 3;
+	case E: return 4;
+	case E_SHARP:
+	case F: return 5;
+	case F_SHARP: return 6;
+	case G: return 7;
+	case G_SHARP: return 8;
+	case A: return 9;
+	case A_SHARP: return 10;
+	case B: return 11;
+	case B_SHARP: return 12;
+	}
+	return -1;
+}
+
+static int to_midi_note(int i)
+{
+	enum note note = i % 14;
+	i /= 14;
+	i += C > 0 && note >= C;
+	i *= 12;
+
+	return i + note_value(note);
+}
+
+
+static int play_note(int i, int pressed)
 {
 	int port;
 	const struct notectl *note;
-	if (i <= 28) {
+	if (i < NUM_KEYS/2) {
 		port = port_lower;
 		note = &lower;
 	} else {
-		if (i > 7+45)
-			return 0;
-		if (i == 7+45)
-			i = 7+44;
 		port = port_upper;
 		note = &upper;
-		i -= 24;
+		i -= 28;
 	}
+	i = to_midi_note(i);
 	i += note->base_note;
 	if (i < 0 || i > 127)
 		return 0;
@@ -432,17 +477,14 @@ static int sendnot(int i, int pressed)
 
 static void update_keystate(int i, int pressed, Window win, GC gc)
 {
-	uchar *byte;
-	uchar bit;
+	unsigned long bit = 1L << i/2;
 	int x;
-	byte = keystate + (i-7)/8;
-	bit = 1 << (i-7) % 8;
-	if (pressed && *byte & bit || !sendnot(i, pressed))
+	if (pressed && ((keystate[i & 1] >> i/2) & 1) || !play_note(i, pressed))
 		return;
 	if (pressed)
-		*byte |= bit;
+		keystate[i & 1] |= bit;
 	else
-		*byte &= ~bit;
+		keystate[i & 1] &= ~bit;
 	x = draw_key(i, pressed, gc);
 	XCopyArea(dpy, keybd_pixmap, win, gc, x,0,keyw,keyh+1, x,PANEL_HEIGHT);
 }
@@ -527,9 +569,10 @@ static void change_note_control(KeySym keysym, int i, unsigned mod,
 static int keypressrelease(XKeyEvent *e, GC gc)
 {
 	int i = translate_keycode(e->keycode);
-	unsigned mod = e->state & (ShiftMask | ControlMask | Mod1Mask);
+	unsigned mod = e->state & (ControlMask | Mod1Mask);
 	KeySym keysym;
-	if (e->type == KeyPress && (!i || mod)) {
+
+	if (e->type == KeyPress && (i < 0 || mod)) {
 		keysym = XLookupKeysym(e, 0);
 		i = 1;
 		if (mod & ControlMask)
@@ -551,8 +594,8 @@ static int keypressrelease(XKeyEvent *e, GC gc)
 			default:
 				return 1;
 			}
-		change_note_control(keysym, i, mod, e->window, gc);
-	} else if (i)
+		change_note_control(keysym, i, e->state, e->window, gc);
+	} else if (i >= 0)
 		update_keystate(i, e->type == KeyPress, e->window, gc);
 	return 1;
 }
@@ -562,12 +605,12 @@ static void keyboard_state_changed(char *key_vector, Window win, GC gc)
 	uchar i = 0;
 	uchar keycode;
 	char pressed;
-	while (i < 46) {
+	while (i < NUM_KEYS) {
 		keycode = keycodes[i];
 		if (keycode) {
 			pressed = key_vector[keycode/8] & 1<<(keycode%8);
-			if (pressed != (keystate[i/8] & 1<<(i%8)))
-				update_keystate(i+7, pressed, win, gc);
+			if (pressed || ((keystate[i & 1] >> i/2) & 1))
+				update_keystate(i, pressed, win, gc);
 		}
 		i++;
 	}
@@ -640,6 +683,7 @@ int main(int argc, char **argv)
 	gc = XCreateGC(dpy, win, 0, NULL);
 	font = XLoadQueryFont(dpy, "*-fixed-*-10-*-iso8859-1");
 	XSetFont(dpy, gc, font->fid);
+	init_keycodes();
 
 	while (process_event(win, gc))
 		;
